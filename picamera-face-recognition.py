@@ -1,0 +1,73 @@
+#!/usr/bin/python3
+import cv2
+from picamera2 import Picamera2, Preview
+from libcamera import Transform, controls
+import numpy as np
+import os
+import time
+
+# Globals and settings
+font = cv2.FONT_HERSHEY_SIMPLEX
+# iniciate id counter
+id = 0
+# names related to ids: example ==> Marcelo: id=1,  etc
+names = ['None', 'Maria', 'Iris', 'Kostas']
+
+
+# Load the previously trained model.
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer.read('trainer/trainer.yml')
+
+# Setup detector.
+face_detector = cv2.CascadeClassifier("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml")
+
+# Initialize Pi camera
+picam2 = Picamera2()
+# "format": 'XRGB8888'
+config = picam2.create_preview_configuration(main={"size": (640, 480)})
+											 #transform=Transform(vflip=True))
+picam2.configure(config)
+#picam2.start_preview(Preview.QTGL)
+picam2.start_preview(Preview.DRM)
+#picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})
+picam2.start()
+
+# 
+while True:
+    im = picam2.capture_array()
+    gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+
+    faces = face_detector.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=6,
+        minSize=(24, 24),
+    )
+
+    for (x, y, w, h) in faces:
+        cv2.rectangle(im, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        id, confidence = recognizer.predict(gray[y:y + h, x:x + w])
+
+
+        # Check if confidence is less them 100 ==> "0" is perfect match
+        if (confidence < 100):
+            id = "{0} {1}x{2}".format(names[id], w, h)
+            confidence = "  {0}%".format(round(100 - confidence))
+            #time.sleep(1)
+        else:
+            id = "unknown"
+            confidence = "  {0}%".format(round(100 - confidence))
+
+        cv2.putText(im, str(id), (x + 5, y - 5), font, 0.7, (255, 255, 255), 2)
+        cv2.putText(im, str(confidence), (x + 5, y + h - 5), font, 0.4, (255, 255, 0), 1)
+
+    cv2.imshow('camera', im)
+
+    k = cv2.waitKey(10) & 0xff  # Press 'ESC' for exiting video
+    if k == 27:
+        break
+
+# Do a bit of cleanup
+print("\n [INFO] Exiting Program and cleanup stuff")
+picam2.stop()
+cv2.destroyAllWindows()
